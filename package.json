@@ -1,0 +1,9 @@
+{
+  "name": "wtd-pinterest-assets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Static asset host for Weekly Tarot Digest Pinterest images.",
+  "scripts": {
+    "build": "node scripts/build-static.mjs"
+  }
+}
