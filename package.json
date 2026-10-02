@@ -4,6 +4,7 @@
   "private": true,
   "description": "Static asset host for Weekly Tarot Digest Pinterest images.",
   "scripts": {
-    "build": "node scripts/build-static.mjs"
+    "build": "node scripts/build-static.mjs",
+    "generate:pinterest": "node scripts/generate-pinterest-csv.mjs"
   }
 }
