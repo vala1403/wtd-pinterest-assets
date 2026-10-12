@@ -2,3 +2,5 @@ dist/
 node_modules/
 .vercel/
 videos-oct-5/
+videos-oct-12/
+.tmp/

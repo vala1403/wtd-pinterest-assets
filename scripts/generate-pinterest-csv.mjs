@@ -29,6 +29,17 @@ const headers = [
   "Link"
 ];
 
+const videoBulkHeaders = [
+  "Title",
+  "Media URL",
+  "Pinterest board",
+  "Thumbnail",
+  "Description",
+  "Link",
+  "Publish date",
+  "Keywords"
+];
+
 const root = resolve(import.meta.dirname, "..");
 const decksRoot = resolve(root, "public", "decks");
 const videosRoot = resolve(root, "public", "videos");
@@ -70,11 +81,34 @@ function monthName(date) {
   }).format(date);
 }
 
+function longMonthName(date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    timeZone: "UTC"
+  }).format(date);
+}
+
 function formatWeekRange(deckDate) {
   const start = parseDeckDate(deckDate);
   const end = addUtcDays(start, 6);
   const startMonth = monthName(start);
   const endMonth = monthName(end);
+  const startDay = start.getUTCDate();
+  const endDay = end.getUTCDate();
+  const year = end.getUTCFullYear();
+
+  if (start.getUTCFullYear() === end.getUTCFullYear() && startMonth === endMonth) {
+    return `${startMonth} ${startDay}–${endDay}, ${year}`;
+  }
+
+  return `${startMonth} ${startDay}–${endMonth} ${endDay}, ${year}`;
+}
+
+function formatLongWeekRange(deckDate) {
+  const start = parseDeckDate(deckDate);
+  const end = addUtcDays(start, 6);
+  const startMonth = longMonthName(start);
+  const endMonth = longMonthName(end);
   const startDay = start.getUTCDate();
   const endDay = end.getUTCDate();
   const year = end.getUTCFullYear();
@@ -134,6 +168,7 @@ function parseArgs(args) {
     all: false,
     media: "image",
     output: "",
+    pinterestVideoBulk: false,
     skipSigns: new Set(),
     suffix: ""
   };
@@ -150,6 +185,9 @@ function parseArgs(args) {
       }
       options.media = value;
       index += 1;
+    } else if (arg === "--pinterest-video-bulk") {
+      options.pinterestVideoBulk = true;
+      options.media = "video";
     } else if (arg === "--output") {
       const value = args[index + 1];
       if (!value || !/^[a-z0-9._-]+$/i.test(value)) {
@@ -194,12 +232,21 @@ function destinationLink(slug) {
   return `${DIGEST_DOMAIN}/digest-${slug}.html`;
 }
 
+function destinationLinkWithUtm(slug, deckDate) {
+  const campaign = `week_${deckDate.replaceAll("-", "_")}`;
+  return `${destinationLink(slug)}?utm_source=pinterest&utm_medium=organic&utm_campaign=${campaign}&utm_content=${slug}`;
+}
+
 function mediaUrl(deckDate, slug, media) {
   if (media === "video") {
     return `${ASSET_DOMAIN}/videos/${deckDate}/${slug}.mp4`;
   }
 
   return `${ASSET_DOMAIN}/decks/${deckDate}/${slug}.png`;
+}
+
+function keywordsFor(label) {
+  return `${label} tarot, ${label} weekly tarot, weekly tarot digest, tarot reading, zodiac tarot, horoscope`;
 }
 
 async function validateMediaFiles(deckDate, media) {
@@ -227,7 +274,7 @@ async function validateMediaFiles(deckDate, media) {
 }
 
 function buildRows(deckDate, options = {}) {
-  const weekRange = formatWeekRange(deckDate);
+  const weekRange = options.pinterestVideoBulk ? formatLongWeekRange(deckDate) : formatWeekRange(deckDate);
   const skipSigns = options.skipSigns || new Set();
   const media = options.media || "image";
 
@@ -236,22 +283,37 @@ function buildRows(deckDate, options = {}) {
     const pinMediaUrl = mediaUrl(deckDate, slug, media);
     const description =
       media === "video"
-        ? `Weekly Tarot Digest compares 5 independent ${label} tarot readings for ${weekRange} and identifies the recurring themes.`
+        ? `I compare five sampled YouTube tarot readings for ${label} and gather the recurring themes, differences, and overall tone for ${weekRange}. Read the full two-minute digest.`
         : `Five independent ${label} tarot readings compared for ${weekRange}. ` +
           `See what themes echoed across the readings in this week's Weekly Tarot Digest.`;
 
-    return {
+    const row = {
       Title: title,
       "Media URL": pinMediaUrl,
       "Pinterest board": BOARD_NAME,
       Description: description,
-      Link: destinationLink(slug)
+      Link: options.pinterestVideoBulk ? destinationLinkWithUtm(slug, deckDate) : destinationLink(slug)
     };
+
+    if (options.pinterestVideoBulk) {
+      return {
+        Title: row.Title,
+        "Media URL": row["Media URL"],
+        "Pinterest board": row["Pinterest board"],
+        Thumbnail: "00:01",
+        Description: row.Description,
+        Link: row.Link,
+        "Publish date": "",
+        Keywords: keywordsFor(label)
+      };
+    }
+
+    return row;
   });
 }
 
 function validateRows(deckDate, rows, options = {}) {
-  const weekRange = formatWeekRange(deckDate);
+  const weekRange = options.pinterestVideoBulk ? formatLongWeekRange(deckDate) : formatWeekRange(deckDate);
   const skipSigns = options.skipSigns || new Set();
   const media = options.media || "image";
   const seenSigns = new Map();
@@ -275,7 +337,8 @@ function validateRows(deckDate, rows, options = {}) {
       throw new Error(`Deck ${deckDate} has incorrect media URL for ${label}.`);
     }
 
-    if (row.Link !== destinationLink(slug)) {
+    const expectedLink = options.pinterestVideoBulk ? destinationLinkWithUtm(slug, deckDate) : destinationLink(slug);
+    if (row.Link !== expectedLink) {
       throw new Error(`Deck ${deckDate} has incorrect destination link for ${label}.`);
     }
 
@@ -285,6 +348,24 @@ function validateRows(deckDate, rows, options = {}) {
 
     if (!row.Description.includes(weekRange)) {
       throw new Error(`Deck ${deckDate} description for ${label} is missing ${weekRange}.`);
+    }
+
+    if (options.pinterestVideoBulk) {
+      if (row.Thumbnail !== "00:01") {
+        throw new Error(`Deck ${deckDate} thumbnail for ${label} is not 00:01.`);
+      }
+      if (row["Publish date"] !== "") {
+        throw new Error(`Deck ${deckDate} publish date for ${label} should be blank.`);
+      }
+      if (!row.Keywords.includes(`${label} tarot`)) {
+        throw new Error(`Deck ${deckDate} keywords for ${label} are missing the sign.`);
+      }
+      if (row.Title.length > 100) {
+        throw new Error(`Deck ${deckDate} title for ${label} exceeds 100 characters.`);
+      }
+      if (row.Description.length > 500) {
+        throw new Error(`Deck ${deckDate} description for ${label} exceeds 500 characters.`);
+      }
     }
   }
 
@@ -314,8 +395,8 @@ async function writeCsv(deckDate, options = {}) {
   validateRows(deckDate, rows, options);
 
   const csv = [
-    csvLine(headers),
-    ...rows.map((row) => csvLine(headers.map((header) => row[header])))
+    csvLine(options.pinterestVideoBulk ? videoBulkHeaders : headers),
+    ...rows.map((row) => csvLine((options.pinterestVideoBulk ? videoBulkHeaders : headers).map((header) => row[header])))
   ].join("\r\n") + "\r\n";
 
   const suffix = options.suffix ? `-${options.suffix}` : "";
@@ -328,7 +409,7 @@ async function writeCsv(deckDate, options = {}) {
     deckDate,
     outputPath,
     rowCount: rows.length,
-    weekRange: formatWeekRange(deckDate),
+    weekRange: options.pinterestVideoBulk ? formatLongWeekRange(deckDate) : formatWeekRange(deckDate),
     skipped: [...skipSigns].join(", ") || "none"
   };
 }
