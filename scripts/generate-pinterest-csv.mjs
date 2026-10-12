@@ -282,8 +282,10 @@ function buildRows(deckDate, options = {}) {
     const title = `${label} Weekly Tarot Digest | ${weekRange}`;
     const pinMediaUrl = mediaUrl(deckDate, slug, media);
     const description =
-      media === "video"
+      options.pinterestVideoBulk
         ? `I compare five sampled YouTube tarot readings for ${label} and gather the recurring themes, differences, and overall tone for ${weekRange}. Read the full two-minute digest.`
+        : media === "video"
+        ? `Weekly Tarot Digest compares 5 independent ${label} tarot readings for ${weekRange} and identifies the recurring themes.`
         : `Five independent ${label} tarot readings compared for ${weekRange}. ` +
           `See what themes echoed across the readings in this week's Weekly Tarot Digest.`;
 
